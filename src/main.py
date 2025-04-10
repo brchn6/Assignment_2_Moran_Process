@@ -40,6 +40,25 @@ def init_log(results_path, log_level="INFO"):
 
     return logging, results_path
 
+def _get_lsf_job_details() -> list[str]:
+    """
+    Retrieves environment variables for LSF job details, if available.
+    """
+    lsf_job_id = os.environ.get('LSB_JOBID')    # Job ID
+    lsf_queue = os.environ.get('LSB_QUEUE')     # Queue name
+    lsf_host = os.environ.get('LSB_HOSTS')      # Hosts allocated
+    lsf_job_name = os.environ.get('LSB_JOBNAME')  # Job name
+    lsf_command = os.environ.get('LSB_CMD')     # Command used to submit job
+
+    details = [
+        f"LSF Job ID: {lsf_job_id}",
+        f"LSF Queue: {lsf_queue}",
+        f"LSF Hosts: {lsf_host}",
+        f"LSF Job Name: {lsf_job_name}",
+        f"LSF Command: {lsf_command}"
+    ]
+    return details
+
 #######################################################################
 # Time tracking decorator
 #######################################################################
@@ -216,18 +235,22 @@ def run_single_simulation(population_size, initial_a_count, selection_coefficien
     - trajectory: List of type A frequencies at each step
     - selection_history: List of selection coefficients at each step (for env_fluctuation)
     """
+    # Set a reasonable default maximum steps to prevent infinite loops
+    if max_steps is None:
+        max_steps = max(10000, population_size * 100)
+    
     pop = Population(population_size, initial_a_count, selection_coefficient, 
                     mutation_rate, env_fluctuation)
     
     trajectory = [pop.get_a_frequency()]
-    steps = 0
-    
+    steps = 0    
     while not pop.is_fixed():
         pop.step()
         steps += 1
         trajectory.append(pop.get_a_frequency())
         
-        if max_steps is not None and steps >= max_steps:
+        if steps >= max_steps:
+            logging.debug(f"Simulation terminated after reaching maximum steps: {max_steps}")
             break
     
     return pop.is_type_a_fixed(), steps, trajectory, pop.selection_history
@@ -377,7 +400,7 @@ def plot_mutation_effects(results_df, results_path):
     - results_path: Path to save plots
     """
     # Set plot style
-    plt.style.use('seaborn-whitegrid')
+    plt.style.use('seaborn-v0_8-whitegrid')  # For newer versions
     
     # 1. Effect of mutation rate on fixation probability for different selection coefficients
     plt.figure(figsize=(10, 6))
@@ -651,7 +674,7 @@ def plot_environmental_effects(results_df, results_path):
     - results_path: Path to save plots
     """
     # Set plot style
-    plt.style.use('seaborn-whitegrid')
+    plt.style.use('seaborn-v0_8-whitegrid')  # For newer versions
     
     # Extract baseline results (no fluctuation)
     baseline = results_df[results_df['fluctuation_type'] == 'none']
@@ -983,6 +1006,11 @@ def main():
     
     # Initialize logging
     logger, results_path = init_log(results_dir, args.log_level)
+
+    # lsf deat
+    logging.info("_get_lsf_job_details :")
+    details = _get_lsf_job_details()
+    logging.info(details)
     
     if args.run_extension_analysis:
         # Run extensive analysis of both extensions
