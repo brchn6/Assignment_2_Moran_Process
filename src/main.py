@@ -9,6 +9,7 @@ Author: BC
 
 import numpy as np
 import matplotlib.pyplot as plt
+import seaborn as sns
 import argparse
 import os
 import logging
@@ -16,6 +17,7 @@ import time
 from datetime import datetime
 import pandas as pd
 from tqdm import tqdm
+
 
 #######################################################################
 # Setup logging
@@ -308,184 +310,150 @@ def run_parameter_sweep(results_path, args):
 def analyze_parameter_sweep(results_df, results_path):
     """
     Analyze the parameter sweep results to understand the impact of each parameter
-    
+
     Parameters:
     - results_df: DataFrame containing simulation results
     - results_path: Path to save analysis results
     """
     logging.info("Analyzing parameter sweep results...")
-    
+
     # 1. Create summary table
     summary = results_df.groupby(['population_size', 'selection_coefficient']).agg({
         'empirical_fixation_prob': ['mean', 'std'],
         'mean_fixation_time': ['mean', 'std'],
         'simulation_time': ['mean', 'sum']
     }).reset_index()
-    
+
     # Save summary table
     summary_path = os.path.join(results_path, "parameter_sweep_summary.csv")
     summary.to_csv(summary_path)
     logging.info(f"Summary table saved to {summary_path}")
-    
+
     # 2. Visualization of parameter effects
     try:
-        import matplotlib.pyplot as plt
-        import seaborn as sns
-        
-        # Set style for better visualizations
         sns.set_style("whitegrid")
         plt.rcParams['figure.figsize'] = (12, 8)
-        
-        # Create directory for visualization plots
+
         viz_path = os.path.join(results_path, "visualizations")
         os.makedirs(viz_path, exist_ok=True)
-        
+
         # 2.1 Effect of selection coefficient on fixation probability
-        plt.figure(figsize=(12, 8))
+        plt.figure()
         for pop_size in results_df['population_size'].unique():
             subset = results_df[results_df['population_size'] == pop_size]
             sns.lineplot(data=subset, x='selection_coefficient', y='empirical_fixation_prob', 
-                        marker='o', label=f"N={pop_size}")
-            
+                         marker='o', label=f"N={pop_size}")
         plt.xlabel("Selection Coefficient (s)")
         plt.ylabel("Fixation Probability")
         plt.title("Effect of Selection Coefficient on Fixation Probability")
         plt.grid(True, alpha=0.3)
-        plt.legend()
-        
-        # Add horizontal line at y=0.5 for reference
         plt.axhline(y=0.5, color='gray', linestyle='--', alpha=0.7)
-        
-        # Save plot
-        s_effect_path = os.path.join(viz_path, "selection_effect_on_fixation.png")
-        plt.savefig(s_effect_path, dpi=300)
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(os.path.join(viz_path, "selection_effect_on_fixation.png"), dpi=300, bbox_inches='tight')
         plt.close()
-        
+
         # 2.2 Effect of population size on fixation probability
-        plt.figure(figsize=(12, 8))
+        plt.figure()
         for s in results_df['selection_coefficient'].unique():
             subset = results_df[results_df['selection_coefficient'] == s]
             sns.lineplot(data=subset, x='population_size', y='empirical_fixation_prob', 
-                        marker='o', label=f"s={s}")
-            
-        plt.xscale('log')  # Log scale for population size
+                         marker='o', label=f"s={s}")
+        plt.xscale('log')
         plt.xlabel("Population Size (log scale)")
         plt.ylabel("Fixation Probability")
         plt.title("Effect of Population Size on Fixation Probability")
         plt.grid(True, alpha=0.3)
         plt.legend()
-        
-        # Save plot
-        n_effect_path = os.path.join(viz_path, "population_size_effect_on_fixation.png")
-        plt.savefig(n_effect_path, dpi=300)
+        plt.tight_layout()
+        plt.savefig(os.path.join(viz_path, "population_size_effect_on_fixation.png"), dpi=300, bbox_inches='tight')
         plt.close()
-        
+
         # 2.3 Effect of initial frequency on fixation probability
-        plt.figure(figsize=(12, 8))
+        plt.figure()
         for s in results_df['selection_coefficient'].unique():
             subset = results_df[results_df['selection_coefficient'] == s]
             sns.lineplot(data=subset, x='initial_a_frequency', y='empirical_fixation_prob', 
-                        marker='o', label=f"s={s}")
-            
+                         marker='o', label=f"s={s}")
         plt.xlabel("Initial Frequency of Type A")
         plt.ylabel("Fixation Probability")
         plt.title("Effect of Initial Frequency on Fixation Probability")
         plt.grid(True, alpha=0.3)
-        plt.legend()
-        
-        # Add diagonal line representing neutral drift expectation
         x = np.linspace(0, 1, 100)
         plt.plot(x, x, 'k--', alpha=0.7, label="Neutral Drift")
         plt.legend()
-        
-        # Save plot
-        freq_effect_path = os.path.join(viz_path, "initial_frequency_effect_on_fixation.png")
-        plt.savefig(freq_effect_path, dpi=300)
+        plt.tight_layout()
+        plt.savefig(os.path.join(viz_path, "initial_frequency_effect_on_fixation.png"), dpi=300, bbox_inches='tight')
         plt.close()
-        
-        # 2.4 Effect of parameters on fixation time
-        plt.figure(figsize=(12, 8))
+
+        # 2.4 Effect on fixation time
+        plt.figure()
         for s in results_df['selection_coefficient'].unique():
             subset = results_df[results_df['selection_coefficient'] == s]
             sns.lineplot(data=subset, x='population_size', y='mean_fixation_time', 
-                       marker='o', label=f"s={s}")
-            
-        plt.xscale('log')  # Log scale for population size
-        plt.yscale('log')  # Log scale for fixation time
+                         marker='o', label=f"s={s}")
+        plt.xscale('log')
+        plt.yscale('log')
         plt.xlabel("Population Size (log scale)")
         plt.ylabel("Mean Fixation Time (log scale)")
         plt.title("Effect of Population Size and Selection Coefficient on Fixation Time")
         plt.grid(True, alpha=0.3)
         plt.legend()
-        
-        # Save plot
-        time_effect_path = os.path.join(viz_path, "parameter_effects_on_fixation_time.png")
-        plt.savefig(time_effect_path, dpi=300)
+        plt.tight_layout()
+        plt.savefig(os.path.join(viz_path, "parameter_effects_on_fixation_time.png"), dpi=300, bbox_inches='tight')
         plt.close()
-        
-        # 2.5 Computational Performance Analysis
-        plt.figure(figsize=(12, 8))
+
+        # 2.5 Computational Performance
+        plt.figure()
         sns.lineplot(data=results_df, x='population_size', y='simulation_time', marker='o')
-        plt.xscale('log')  # Log scale for population size
-        plt.yscale('log')  # Log scale for simulation time
+        plt.xscale('log')
+        plt.yscale('log')
         plt.xlabel("Population Size (log scale)")
         plt.ylabel("Simulation Time (seconds, log scale)")
         plt.title("Computational Performance: Effect of Population Size on Simulation Time")
         plt.grid(True, alpha=0.3)
-        
-        # Save plot
-        perf_path = os.path.join(viz_path, "computational_performance.png")
-        plt.savefig(perf_path, dpi=300)
+        plt.tight_layout()
+        plt.savefig(os.path.join(viz_path, "computational_performance.png"), dpi=300, bbox_inches='tight')
         plt.close()
-        
+
         # 2.6 Heatmap of fixation probabilities
-        # Create pivot table for heatmap
         heatmap_data = results_df.pivot_table(
-            values='empirical_fixation_prob', 
+            values='empirical_fixation_prob',
             index='population_size',
             columns='selection_coefficient'
         )
-        
-        plt.figure(figsize=(12, 8))
+        plt.figure()
         sns.heatmap(heatmap_data, annot=True, fmt=".2f", cmap="viridis", 
-                  cbar_kws={'label': 'Fixation Probability'})
+                    cbar_kws={'label': 'Fixation Probability'})
         plt.title("Fixation Probability Heatmap")
         plt.xlabel("Selection Coefficient (s)")
         plt.ylabel("Population Size (N)")
-        
-        # Save plot
-        heatmap_path = os.path.join(viz_path, "fixation_probability_heatmap.png")
-        plt.savefig(heatmap_path, dpi=300)
+        plt.tight_layout()
+        plt.savefig(os.path.join(viz_path, "fixation_probability_heatmap.png"), dpi=300, bbox_inches='tight')
         plt.close()
-        
-        # 2.7 Summary of parameter effects
-        # Calculate correlation between parameters and outcomes
-        corr_data = results_df[['population_size', 'selection_coefficient', 
-                              'initial_a_frequency', 'empirical_fixation_prob', 
-                              'mean_fixation_time', 'simulation_time']]
-        
+
+        # 2.7 Correlation matrix
+        corr_data = results_df[['population_size', 'selection_coefficient', 'initial_a_frequency',
+                                'empirical_fixation_prob', 'mean_fixation_time', 'simulation_time']]
         corr_matrix = corr_data.corr()
-        
         plt.figure(figsize=(10, 8))
         sns.heatmap(corr_matrix, annot=True, fmt=".2f", cmap="coolwarm", 
-                  cbar_kws={'label': 'Correlation Coefficient'})
+                    cbar_kws={'label': 'Correlation Coefficient'})
         plt.title("Correlation Between Parameters and Outcomes")
-        
-        # Save plot
-        corr_path = os.path.join(viz_path, "parameter_correlation_matrix.png")
-        plt.savefig(corr_path, dpi=300)
+        plt.tight_layout()
+        plt.savefig(os.path.join(viz_path, "parameter_correlation_matrix.png"), dpi=300, bbox_inches='tight')
         plt.close()
-        
+
         logging.info(f"Visualizations saved to {viz_path}")
-        
+
     except ImportError as e:
         logging.warning(f"Could not create visualizations: {e}")
     except Exception as e:
         logging.error(f"Error in visualization: {e}")
         import traceback
         logging.error(traceback.format_exc())
-    
-    # 3. Create a report summarizing findings
+
+    # 3. Generate summary report
     create_parameter_sweep_report(results_df, results_path)
 
 def create_parameter_sweep_report(results_df, results_path):
@@ -833,9 +801,9 @@ def main():
     
     logging.info("Simulation complete!")
 
-
 if __name__ == "__main__":
     main()
 
 ## example usage
 # python src/main.py --population_size 100 --initial_a_count 1 --selection_coefficient 0.1 --num_simulations 100
+# python src/main.py --parameter_sweep

@@ -1,6 +1,5 @@
 ## The Moran Process: Core Concept
 
-<!-- Part 1 bar-cohen -->
 
 The Moran process is a mathematical model in population genetics that simulates how genetic variants compete in a fixed-size population. This program simulates a population with two types of individuals (A and B) and tracks whether type A eventually takes over the entire population (fixation) or disappears.
 
