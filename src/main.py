@@ -967,6 +967,411 @@ def create_environmental_analysis_report(results_df, results_path):
     logging.info(f"Environmental analysis report created at {report_path}")
     return report_path
 
+def run_parameter_sweep(results_path, args):
+    """
+    Run a parameter sweep to analyze how different values of population size and 
+    selection coefficient affect fixation probability and time.
+    
+    Parameters:
+    - results_path: Path to save the results
+    - args: Command line arguments
+    """
+    logging.info("Starting parameter sweep analysis...")
+    
+    # Define parameter ranges to test
+    population_sizes = [10, 50, 100, 200, 500]
+    selection_coefficients = [-0.5, -0.2, -0.1, 0, 0.1, 0.2, 0.5]
+    initial_fractions = [0.1, 0.3, 0.5]  # as a fraction of population size
+    
+    # Create results directory
+    sweep_results_dir = os.path.join(results_path, "parameter_sweep")
+    os.makedirs(sweep_results_dir, exist_ok=True)
+    
+    # Track results
+    results = []
+    
+    # Total experiments
+    total_experiments = len(population_sizes) * len(selection_coefficients) * len(initial_fractions)
+    experiment_count = 0
+    
+    # Run simulations
+    for N in population_sizes:
+        for s in selection_coefficients:
+            for frac in initial_fractions:
+                experiment_count += 1
+                initial_a_count = max(1, int(N * frac))  # Ensure at least 1 individual
+                
+                logging.info(f"Running experiment {experiment_count}/{total_experiments}: "
+                           f"N={N}, s={s}, initial_fraction={frac} (initial_a_count={initial_a_count})")
+                
+                # Calculate theoretical fixation probability
+                theo_prob = theoretical_fixation_probability(N, initial_a_count, s)
+                
+                # Run simulations
+                fix_prob, mean_time = calculate_fixation_probability(
+                    N, initial_a_count, s, args.num_simulations
+                )
+                
+                # Record results
+                results.append({
+                    'population_size': N,
+                    'selection_coefficient': s,
+                    'initial_fraction': frac,
+                    'initial_a_count': initial_a_count,
+                    'theoretical_fixation_prob': theo_prob,
+                    'empirical_fixation_prob': fix_prob,
+                    'mean_fixation_time': mean_time
+                })
+                
+                logging.info(f"  Results: Fixation Probability = {fix_prob:.4f} (Theoretical: {theo_prob:.4f}), "
+                           f"Mean Fixation Time = {mean_time:.1f}")
+    
+    # Convert results to DataFrame
+    results_df = pd.DataFrame(results)
+    
+    # Save raw results
+    csv_path = os.path.join(sweep_results_dir, "parameter_sweep_results.csv")
+    results_df.to_csv(csv_path, index=False)
+    logging.info(f"Raw results saved to {csv_path}")
+    
+    # Plot results
+    plot_parameter_sweep_results(results_df, sweep_results_dir)
+    
+    # Create summary report
+    create_parameter_sweep_report(results_df, sweep_results_dir)
+    
+    return results_df
+
+def plot_parameter_sweep_results(results_df, results_path):
+    """
+    Plot the parameter sweep results
+    
+    Parameters:
+    - results_df: DataFrame containing simulation results
+    - results_path: Path to save plots
+    """
+    # Use a modern style that works with current matplotlib
+    plt.style.use('default')
+    
+    # 1. Fixation probability vs selection coefficient for different population sizes
+    plt.figure(figsize=(12, 8))
+    
+    # Group by population size and initial fraction, then plot each group
+    for N in results_df['population_size'].unique():
+        for frac in results_df['initial_fraction'].unique():
+            subset = results_df[(results_df['population_size'] == N) & 
+                              (results_df['initial_fraction'] == frac)]
+            
+            # Sort by selection coefficient
+            subset = subset.sort_values('selection_coefficient')
+            
+            # Plot empirical results
+            plt.plot(subset['selection_coefficient'], subset['empirical_fixation_prob'], 
+                    marker='o', linestyle='-', 
+                    label=f"N={N}, initial fraction={frac}")
+            
+            # Plot theoretical results as dashed lines
+            plt.plot(subset['selection_coefficient'], subset['theoretical_fixation_prob'], 
+                    marker='', linestyle='--', alpha=0.7,
+                    color=plt.gca().lines[-1].get_color())
+    
+    plt.xlabel("Selection Coefficient (s)")
+    plt.ylabel("Fixation Probability")
+    plt.title("Fixation Probability vs Selection Coefficient")
+    plt.grid(True, alpha=0.3)
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout()
+    plt.savefig(os.path.join(results_path, "fixation_probability_vs_selection.png"), dpi=300)
+    plt.close()
+    
+    # 2. Fixation probability vs population size for different selection coefficients
+    plt.figure(figsize=(12, 8))
+    for s in results_df['selection_coefficient'].unique():
+        for frac in results_df['initial_fraction'].unique():
+            subset = results_df[(results_df['selection_coefficient'] == s) & 
+                              (results_df['initial_fraction'] == frac)]
+            
+            # Sort by population size
+            subset = subset.sort_values('population_size')
+            
+            plt.plot(subset['population_size'], subset['empirical_fixation_prob'], 
+                    marker='o', linestyle='-', 
+                    label=f"s={s}, initial fraction={frac}")
+    
+    plt.xlabel("Population Size (N)")
+    plt.ylabel("Fixation Probability")
+    plt.title("Fixation Probability vs Population Size")
+    plt.grid(True, alpha=0.3)
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout()
+    plt.savefig(os.path.join(results_path, "fixation_probability_vs_population.png"), dpi=300)
+    plt.close()
+    
+    # 3. Fixation time vs selection coefficient
+    plt.figure(figsize=(12, 8))
+    for N in results_df['population_size'].unique():
+        for frac in results_df['initial_fraction'].unique():
+            subset = results_df[(results_df['population_size'] == N) & 
+                              (results_df['initial_fraction'] == frac)]
+            
+            # Sort by selection coefficient
+            subset = subset.sort_values('selection_coefficient')
+            
+            plt.plot(subset['selection_coefficient'], subset['mean_fixation_time'], 
+                    marker='o', linestyle='-', 
+                    label=f"N={N}, initial fraction={frac}")
+    
+    plt.xlabel("Selection Coefficient (s)")
+    plt.ylabel("Mean Fixation Time")
+    plt.title("Fixation Time vs Selection Coefficient")
+    plt.grid(True, alpha=0.3)
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout()
+    plt.savefig(os.path.join(results_path, "fixation_time_vs_selection.png"), dpi=300)
+    plt.close()
+    
+    # 4. Fixation time vs population size
+    plt.figure(figsize=(12, 8))
+    for s in results_df['selection_coefficient'].unique():
+        for frac in results_df['initial_fraction'].unique():
+            subset = results_df[(results_df['selection_coefficient'] == s) & 
+                              (results_df['initial_fraction'] == frac)]
+            
+            # Sort by population size
+            subset = subset.sort_values('population_size')
+            
+            plt.plot(subset['population_size'], subset['mean_fixation_time'], 
+                    marker='o', linestyle='-', 
+                    label=f"s={s}, initial fraction={frac}")
+    
+    plt.xlabel("Population Size (N)")
+    plt.ylabel("Mean Fixation Time")
+    plt.title("Fixation Time vs Population Size")
+    plt.grid(True, alpha=0.3)
+    plt.legend(bbox_to_anchor=(1.05, 1), loc='upper left')
+    plt.tight_layout()
+    plt.savefig(os.path.join(results_path, "fixation_time_vs_population.png"), dpi=300)
+    plt.close()
+    
+    # 5. Heatmap of fixation probability for population size vs selection coefficient
+    # For a specific initial fraction (0.1)
+    for frac in results_df['initial_fraction'].unique():
+        subset = results_df[results_df['initial_fraction'] == frac]
+        
+        # Create pivot table for heatmap
+        heatmap_data = subset.pivot_table(
+            values='empirical_fixation_prob',
+            index='population_size',
+            columns='selection_coefficient'
+        )
+        
+        plt.figure(figsize=(12, 8))
+        sns.heatmap(heatmap_data, annot=True, fmt='.3f', cmap='viridis',
+                  cbar_kws={'label': 'Fixation Probability'})
+        plt.title(f"Fixation Probability Heatmap (Initial Fraction = {frac})")
+        plt.xlabel("Selection Coefficient")
+        plt.ylabel("Population Size")
+        plt.tight_layout()
+        plt.savefig(os.path.join(results_path, f"fixation_probability_heatmap_frac{frac}.png"), dpi=300)
+        plt.close()
+        
+        # Heatmap for fixation time
+        heatmap_data_time = subset.pivot_table(
+            values='mean_fixation_time',
+            index='population_size',
+            columns='selection_coefficient'
+        )
+        
+        plt.figure(figsize=(12, 8))
+        sns.heatmap(heatmap_data_time, annot=True, fmt='.0f', cmap='plasma',
+                  cbar_kws={'label': 'Mean Fixation Time'})
+        plt.title(f"Fixation Time Heatmap (Initial Fraction = {frac})")
+        plt.xlabel("Selection Coefficient")
+        plt.ylabel("Population Size")
+        plt.tight_layout()
+        plt.savefig(os.path.join(results_path, f"fixation_time_heatmap_frac{frac}.png"), dpi=300)
+        plt.close()
+
+def create_parameter_sweep_report(results_df, results_path):
+    """
+    Create a summary report for parameter sweep analysis
+    
+    Parameters:
+    - results_df: DataFrame containing simulation results
+    - results_path: Path to save the report
+    """
+    report_path = os.path.join(results_path, "parameter_sweep_report.txt")
+    
+    with open(report_path, 'w') as f:
+        f.write("="*80 + "\n")
+        f.write("Moran Process: Parameter Sweep Analysis Report\n")
+        f.write("="*80 + "\n\n")
+        
+        # Write introduction
+        f.write("This report summarizes how population size, selection coefficient, and initial frequency\n")
+        f.write("affect the Moran Process dynamics.\n\n")
+        
+        # Summary statistics
+        f.write("-"*80 + "\n")
+        f.write("Summary Statistics:\n")
+        f.write("-"*80 + "\n")
+        
+        f.write(f"Population sizes tested: {sorted(results_df['population_size'].unique())}\n")
+        f.write(f"Selection coefficients tested: {sorted(results_df['selection_coefficient'].unique())}\n")
+        f.write(f"Initial fractions tested: {sorted(results_df['initial_fraction'].unique())}\n\n")
+        
+        # Effect of population size
+        f.write("-"*80 + "\n")
+        f.write("Effect of Population Size:\n")
+        f.write("-"*80 + "\n")
+        
+        # For beneficial mutations (s > 0)
+        beneficial = results_df[results_df['selection_coefficient'] > 0]
+        f.write("For beneficial mutations (s > 0):\n")
+        
+        for s in beneficial['selection_coefficient'].unique():
+            f.write(f"  Selection coefficient s = {s}:\n")
+            
+            for frac in beneficial['initial_fraction'].unique():
+                subset = beneficial[(beneficial['selection_coefficient'] == s) & 
+                                  (beneficial['initial_fraction'] == frac)]
+                
+                # Calculate correlation between population size and fixation probability
+                corr = subset['population_size'].corr(subset['empirical_fixation_prob'])
+                f.write(f"    Initial fraction = {frac}: Correlation with fixation probability = {corr:.4f}\n")
+                
+                # Calculate correlation between population size and fixation time
+                time_corr = subset['population_size'].corr(subset['mean_fixation_time'])
+                f.write(f"    Initial fraction = {frac}: Correlation with fixation time = {time_corr:.4f}\n")
+                
+                # Calculate average deviation from theoretical prediction
+                subset['deviation'] = subset['empirical_fixation_prob'] - subset['theoretical_fixation_prob']
+                avg_dev = subset['deviation'].mean()
+                f.write(f"    Initial fraction = {frac}: Average deviation from theory = {avg_dev:.4f}\n")
+                
+                f.write("\n")
+        
+        # For deleterious mutations (s < 0)
+        deleterious = results_df[results_df['selection_coefficient'] < 0]
+        f.write("For deleterious mutations (s < 0):\n")
+        
+        for s in deleterious['selection_coefficient'].unique():
+            f.write(f"  Selection coefficient s = {s}:\n")
+            
+            for frac in deleterious['initial_fraction'].unique():
+                subset = deleterious[(deleterious['selection_coefficient'] == s) & 
+                                   (deleterious['initial_fraction'] == frac)]
+                
+                # Calculate correlation between population size and fixation probability
+                corr = subset['population_size'].corr(subset['empirical_fixation_prob'])
+                f.write(f"    Initial fraction = {frac}: Correlation with fixation probability = {corr:.4f}\n")
+                
+                # Calculate correlation between population size and fixation time
+                time_corr = subset['population_size'].corr(subset['mean_fixation_time'])
+                f.write(f"    Initial fraction = {frac}: Correlation with fixation time = {time_corr:.4f}\n")
+                
+                # Calculate average deviation from theoretical prediction
+                subset['deviation'] = subset['empirical_fixation_prob'] - subset['theoretical_fixation_prob']
+                avg_dev = subset['deviation'].mean()
+                f.write(f"    Initial fraction = {frac}: Average deviation from theory = {avg_dev:.4f}\n")
+                
+                f.write("\n")
+        
+        # For neutral mutations (s = 0)
+        neutral = results_df[results_df['selection_coefficient'] == 0]
+        f.write("For neutral mutations (s = 0):\n")
+        
+        for frac in neutral['initial_fraction'].unique():
+            subset = neutral[neutral['initial_fraction'] == frac]
+            
+            # Calculate correlation between population size and fixation probability
+            corr = subset['population_size'].corr(subset['empirical_fixation_prob'])
+            f.write(f"  Initial fraction = {frac}: Correlation with fixation probability = {corr:.4f}\n")
+            
+            # Calculate correlation between population size and fixation time
+            time_corr = subset['population_size'].corr(subset['mean_fixation_time'])
+            f.write(f"  Initial fraction = {frac}: Correlation with fixation time = {time_corr:.4f}\n")
+            
+            # Calculate average deviation from theoretical prediction
+            subset['deviation'] = subset['empirical_fixation_prob'] - subset['theoretical_fixation_prob']
+            avg_dev = subset['deviation'].mean()
+            f.write(f"  Initial fraction = {frac}: Average deviation from theory = {avg_dev:.4f}\n")
+            
+            f.write("\n")
+        
+        # Effect of initial fraction
+        f.write("-"*80 + "\n")
+        f.write("Effect of Initial Fraction:\n")
+        f.write("-"*80 + "\n")
+        
+        for s in results_df['selection_coefficient'].unique():
+            f.write(f"Selection coefficient s = {s}:\n")
+            
+            for N in results_df['population_size'].unique():
+                subset = results_df[(results_df['selection_coefficient'] == s) & 
+                                  (results_df['population_size'] == N)]
+                
+                # Calculate correlation between initial fraction and fixation probability
+                corr = subset['initial_fraction'].corr(subset['empirical_fixation_prob'])
+                f.write(f"  Population size N = {N}: Correlation with fixation probability = {corr:.4f}\n")
+                
+                # Calculate correlation between initial fraction and fixation time
+                time_corr = subset['initial_fraction'].corr(subset['mean_fixation_time'])
+                f.write(f"  Population size N = {N}: Correlation with fixation time = {time_corr:.4f}\n")
+                
+                f.write("\n")
+        
+        # Overall conclusions
+        f.write("="*80 + "\n")
+        f.write("Overall Conclusions:\n")
+        f.write("="*80 + "\n\n")
+        
+        # Calculate overall effects
+        # Effect of population size on fixation time
+        overall_N_time_corr = results_df['population_size'].corr(results_df['mean_fixation_time'])
+        
+        # Effect of selection coefficient on fixation probability
+        overall_s_prob_corr = results_df['selection_coefficient'].corr(results_df['empirical_fixation_prob'])
+        
+        # Effect of selection coefficient on fixation time
+        overall_s_time_corr = results_df['selection_coefficient'].corr(results_df['mean_fixation_time'])
+        
+        # Effect of initial fraction on fixation probability
+        overall_frac_prob_corr = results_df['initial_fraction'].corr(results_df['empirical_fixation_prob'])
+        
+        f.write("1. Population Size Effects:\n")
+        f.write(f"   Overall correlation between population size and fixation time: {overall_N_time_corr:.4f}\n")
+        f.write("   Larger populations generally require more time to reach fixation.\n")
+        f.write("   For beneficial mutations, larger populations increase fixation probability.\n")
+        f.write("   For deleterious mutations, larger populations decrease fixation probability.\n\n")
+        
+        f.write("2. Selection Coefficient Effects:\n")
+        f.write(f"   Overall correlation with fixation probability: {overall_s_prob_corr:.4f}\n")
+        f.write(f"   Overall correlation with fixation time: {overall_s_time_corr:.4f}\n")
+        f.write("   Higher selection coefficients strongly increase fixation probability for beneficial mutations.\n")
+        f.write("   More extreme selection coefficients (both positive and negative) generally reduce fixation time.\n\n")
+        
+        f.write("3. Initial Fraction Effects:\n")
+        f.write(f"   Overall correlation with fixation probability: {overall_frac_prob_corr:.4f}\n")
+        f.write("   Higher initial fractions of the mutant type increase fixation probability.\n")
+        f.write("   This effect is strongest for neutral mutations and less pronounced for strongly selected mutations.\n\n")
+        
+        f.write("4. Theoretical vs. Empirical Results:\n")
+        results_df['deviation'] = results_df['empirical_fixation_prob'] - results_df['theoretical_fixation_prob']
+        avg_overall_dev = results_df['deviation'].mean()
+        f.write(f"   Average overall deviation from theoretical predictions: {avg_overall_dev:.4f}\n")
+        f.write("   The empirical results generally confirm theoretical predictions.\n")
+        f.write("   Deviations are most notable for extreme selection coefficients and large population sizes.\n\n")
+        
+        f.write("5. Practical Implications:\n")
+        f.write("   The Moran process provides insights into how mutations spread in finite populations.\n")
+        f.write("   Population size has a strong effect on both fixation probability and time.\n")
+        f.write("   Selection strength can dramatically alter evolutionary outcomes.\n")
+        f.write("   Initial frequency is critical - rare beneficial mutations face significant extinction risk.\n")
+    
+    logging.info(f"Parameter sweep report created at {report_path}")
+    return report_path
+
 #######################################################################
 # Main function
 #######################################################################
